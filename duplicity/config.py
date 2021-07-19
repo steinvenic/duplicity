@@ -378,3 +378,7 @@ fakeroot = None
 # either 'ascii' or None.  Both are bogus, so default to 'utf-8' if it does.
 fsencoding = sys.getfilesystemencoding()
 fsencoding = fsencoding if fsencoding not in [u'ascii', u'ANSI_X3.4-1968', None] else u'utf-8'
+
+
+# ACE alicloud_multipart_upload_threads
+alicloud_multipart_upload_threads = 5
