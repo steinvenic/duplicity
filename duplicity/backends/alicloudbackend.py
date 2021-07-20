@@ -72,7 +72,7 @@ class AliCloudBackend(duplicity.backend.Backend):
                 multipart_parallel = config.alicloud_multipart_upload_threads
 
         import oss2
-        oss2.resumable_upload(self.bucket, key_name, source_path.name, num_threads=multipart_parallel)
+        oss2.resumable_upload(self.bucket, key_name, util.fsdecode(source_path.name), num_threads=multipart_parallel)
 
     def _get(self, remote_filename, local_path):
         remote_filename = util.fsdecode(remote_filename)

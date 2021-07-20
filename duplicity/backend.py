@@ -23,6 +23,7 @@ u"""
 Provides a common interface to all backends and certain sevices
 intended to be used by the backends themselves.
 """
+import traceback
 
 from future import standard_library
 standard_library.install_aliases()
@@ -417,6 +418,7 @@ def retry(operation, fatal=True):
                                            % (n, e.__class__.__name__,
                                               util.uexc(e)), code=code, extra=extra)
                         else:
+                            traceback.print_exc()
                             log.Warn(_(u"Attempt %s failed. %s: %s")
                                      % (n, e.__class__.__name__, util.uexc(e)))
                         if not at_end:
