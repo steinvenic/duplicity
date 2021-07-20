@@ -19,10 +19,11 @@
 # Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
 import os
+
 import duplicity.backend
-from duplicity import log, config
-from duplicity.errors import FatalBackendException, BackendException
-from duplicity import progress
+from duplicity import log, config, util
+from duplicity.errors import BackendException
+
 
 class AliCloudBackend(duplicity.backend.Backend):
     """
@@ -33,7 +34,7 @@ class AliCloudBackend(duplicity.backend.Backend):
     Alternatively you can export the environment variables
     ALICLOUD_OSS_ENDPOINT and ALICLOUD_ACCESS_KEY_ID and ALICLOUD_ACCESS_KEY_SECRET.
     """
-    
+
     def __init__(self, parsed_url):
         duplicity.backend.Backend.__init__(self, parsed_url)
 
@@ -47,13 +48,13 @@ class AliCloudBackend(duplicity.backend.Backend):
 
         self.scheme = parsed_url.scheme
         if parsed_url.hostname:
-            self.bucket_name = parsed_url.hostname 
+            self.bucket_name = parsed_url.hostname
         else:
             raise BackendException("AliCloud OSS requires a bucket name.")
 
         # Make //bucket_name///key_prefix/ and //bucket_name/key_prefix equivalent.
         self.key_prefix = ''
-        self.url_parts = [x for x in parsed_url.path.split('/') if x != ''] 
+        self.url_parts = [x for x in parsed_url.path.split('/') if x != '']
         if self.url_parts:
             self.key_prefix = '%s/' % '/'.join(self.url_parts)
 
@@ -61,18 +62,20 @@ class AliCloudBackend(duplicity.backend.Backend):
         self.reset_connection()
 
     def _put(self, source_path, remote_filename):
+        remote_filename = util.fsdecode(remote_filename)
         key_name = self.key_prefix + remote_filename
-        
+
         # Default multipart parallel threads number is 5.
         multipart_parallel = 5
         if config.alicloud_multipart_upload_threads:
             if config.alicloud_multipart_upload_threads >= 5:
                 multipart_parallel = config.alicloud_multipart_upload_threads
-                
+
         import oss2
         oss2.resumable_upload(self.bucket, key_name, source_path.name, num_threads=multipart_parallel)
 
     def _get(self, remote_filename, local_path):
+        remote_filename = util.fsdecode(remote_filename)
         key_name = self.key_prefix + remote_filename
         self.bucket.get_object_to_file(key_name, local_path.name)
 
@@ -80,19 +83,22 @@ class AliCloudBackend(duplicity.backend.Backend):
         return self.list_filenames_in_bucket()
 
     def _delete(self, filename):
+        filename = util.fsdecode(filename)
         self.bucket.delete_object(self.key_prefix + filename)
 
     def _delete_list(self, filename_list):
         for filename in filename_list:
+            filename = util.fsdecode(filename)
             self._delete(filename)
 
     def _query(self, filename):
+        filename = util.fsdecode(filename)
         """Get the file size"""
         import oss2
         key_name = self.key_prefix + filename
         try:
             file_size = self.bucket.get_object_meta(key_name).content_length
-        except oss2.exceptions.NoSuchKey :
+        except oss2.exceptions.NoSuchKey:
             file_size = -1
         return {'size': file_size}
 
@@ -104,6 +110,7 @@ class AliCloudBackend(duplicity.backend.Backend):
         """
         query_dict = {}
         for filename in filename_list:
+            filename = util.fsdecode(filename)
             query_dict[filename] = self._query(filename)
         return query_dict
 
@@ -120,6 +127,7 @@ class AliCloudBackend(duplicity.backend.Backend):
         for item in oss2.ObjectIterator(self.bucket, prefix=self.key_prefix):
             try:
                 filename = item.key.replace(self.key_prefix, '', 1)
+                filename = util.fsdecode(filename)
                 filename_list.append(filename)
                 log.Debug("Listed %s/%s" % (self.straight_url, filename))
             except AttributeError:
@@ -134,7 +142,7 @@ class AliCloudBackend(duplicity.backend.Backend):
         import oss2
         self.auth = oss2.Auth(self.access_key_id, self.access_key_secret)
         self.bucket = oss2.Bucket(self.auth, self.endpoint, self.bucket_name)
-        
+
         if not self.bucket_exists():
             self.bucket.create_bucket()
 
@@ -144,7 +152,7 @@ class AliCloudBackend(duplicity.backend.Backend):
             self.bucket.get_bucket_acl()
             return True
         except oss2.exceptions.NoSuchBucket:
-            return False 
+            return False
 
     def get_alicloud_configuration(self):
         """
@@ -152,26 +160,28 @@ class AliCloudBackend(duplicity.backend.Backend):
         If the enviroment variables not set, then read from ~/.alicloud.cfg. 
         """
         config_filename = os.path.expanduser('~') + '/.alicloud.cfg'
-        self.endpoint, self.access_key_id, self.access_key_secret = '', '', '' 
-        
+        self.endpoint, self.access_key_id, self.access_key_secret = '', '', ''
+
         # Get configuration from enviroment variable
         if 'ALICLOUD_OSS_ENDPOINT' in os.environ and 'ALICLOUD_ACCESS_KEY_ID' in os.environ and 'ALICLOUD_ACCESS_KEY_SECRET' in os.environ:
             self.endpoint = os.environ['ALICLOUD_OSS_ENDPOINT']
             self.access_key_id = os.environ['ALICLOUD_ACCESS_KEY_ID']
             self.access_key_secret = os.environ['ALICLOUD_ACCESS_KEY_SECRET']
             if self.endpoint == '' or self.access_key_id == '' or self.access_key_secret == '':
-                raise BackendException("AliCloud OSS Endpoint or AccessKeyId or AccessKeySecret got from environment variables are invalid.")
+                raise BackendException(
+                    "AliCloud OSS Endpoint or AccessKeyId or AccessKeySecret got from environment variables are invalid.")
             return
 
         log.Debug("You have not set environment variables, use the configuration file %s instead." % config_filename)
         if not os.path.exists(config_filename):
-            raise BackendException("Please set Endpoint, AccessKeyId, AccessKeySecret in the enviroment variables or in the configuration file %s." % config_filename)
-        
+            raise BackendException(
+                "Please set Endpoint, AccessKeyId, AccessKeySecret in the enviroment variables or in the configuration file %s." % config_filename)
+
         try:
             import configparser
         except ImportError:
             raise BackendException("AliCloud backend requires configparser module.")
-        
+
         # Load configuration from '~/.alicloud.cfg'.
         cfgparser = configparser.SafeConfigParser()
         cfgparser.read(config_filename)
@@ -180,8 +190,10 @@ class AliCloudBackend(duplicity.backend.Backend):
         self.access_key_secret = cfgparser.get("oss", "access_key_secret")
 
         if self.endpoint == '' or self.access_key_id == '' or self.access_key_secret == '':
-            raise BackendException("AliCloud OSS Endpoint or AccessKeyId or AccessKeySecret in %s are invalid." % config_filename)
+            raise BackendException(
+                "AliCloud OSS Endpoint or AccessKeyId or AccessKeySecret in %s are invalid." % config_filename)
         return
+
 
 duplicity.backend.register_backend("oss", AliCloudBackend)
 duplicity.backend.uses_netloc.extend(['oss'])
